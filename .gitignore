@@ -9,3 +9,9 @@ npm-debug.log*
 
 # Environment variables
 .env
+
+# C# / .NET Backend
+bin/
+obj/
+*.user
+*.suo
