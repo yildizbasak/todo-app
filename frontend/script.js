@@ -1,4 +1,4 @@
-const STORAGE_KEY = "kilo.todos";
+const API_URL = "http://localhost:5018/api/todos";
 
 const form = document.getElementById("todo-form");
 const input = document.getElementById("todo-input");
@@ -8,14 +8,21 @@ const emptyState = document.getElementById("empty-state");
 const clearBtn = document.getElementById("clear-completed");
 const themeToggle = document.getElementById("theme-toggle");
 
-let todos = loadTodos();
+let todos = []; 
 let filter = "all";
 
-function loadTodos() {
+async function loadTodos() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-  } catch {
-    return [];
+    const res = await fetch(API_URL);
+    const data = await res.json();
+    todos = data.map(t => ({
+      id: t.id,
+      text: t.title,
+      done: t.isCompleted
+    }));
+    render();
+  } catch (error) {
+    console.error("Backend bağlantı hatası:", error);
   }
 }
 
@@ -73,9 +80,9 @@ function moveTodo(fromId, toId) {
   const from = todos.findIndex((t) => t.id === fromId);
   const to = todos.findIndex((t) => t.id === toId);
   if (from === -1 || to === -1) return;
-  const [moved] = todos.splice(from, 1);
+   const [moved] = todos.splice(from, 1);
   todos.splice(to, 0, moved);
-  saveTodos();
+  // saveTodos() kaldırıldı, backend'de sürükle bırak özelliği yok
   render();
 }
 
@@ -110,26 +117,47 @@ function createItem(todo) {
   return li;
 }
 
-function addTodo(text) {
-  todos.push({ id: Date.now(), text, done: false });
-  saveTodos();
-  render();
-}
-
-function toggleTodo(id) {
-  const todo = todos.find((t) => t.id === id);
-  if (todo) todo.done = !todo.done;
-  saveTodos();
-  render();
-}
-
-function removeTodo(id, li) {
-  li.classList.add("removing");
-  setTimeout(() => {
-    todos = todos.filter((t) => t.id !== id);
-    saveTodos();
+async function addTodo(text) {
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: text, description: "", isCompleted: false })
+    });
+    const newTodo = await res.json();
+    todos.push({ id: newTodo.id, text: newTodo.title, done: newTodo.isCompleted });
     render();
-  }, 200);
+  } catch (error) {
+    console.error("Ekleme hatası:", error);
+  }
+}
+
+async function toggleTodo(id) {
+  const todo = todos.find((t) => t.id === id);
+  if (!todo) return;
+  
+  try {
+    await fetch(`${API_URL}/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: id, title: todo.text, description: "", isCompleted: !todo.done })
+    });
+    todo.done = !todo.done;
+    render();
+  } catch (error) {
+    console.error("Güncelleme hatası:", error);
+  }
+}
+
+async function removeTodo(id, li) {
+  li.classList.add("removing");
+  try {
+    await fetch(`${API_URL}/${id}`, { method: "DELETE" });
+    todos = todos.filter((t) => t.id !== id);
+    render();
+  } catch (error) {
+    console.error("Silme hatası:", error);
+  }
 }
 
 form.addEventListener("submit", (e) => {
@@ -152,8 +180,10 @@ document.querySelectorAll("[data-filter]").forEach((btn) => {
 });
 
 clearBtn.addEventListener("click", () => {
+  todos.filter(t => t.done).forEach(t => {
+    fetch(`${API_URL}/${t.id}`, { method: "DELETE" });
+  });
   todos = todos.filter((t) => !t.done);
-  saveTodos();
   render();
 });
 
@@ -161,4 +191,4 @@ themeToggle.addEventListener("change", () => {
   document.documentElement.dataset.theme = themeToggle.checked ? "dark" : "cupcake";
 });
 
-render();
+loadTodos();
